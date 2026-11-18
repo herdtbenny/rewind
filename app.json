@@ -1,17 +1,20 @@
 {
   "expo": {
-    "name": "foto-swipe",
+    "name": "Foto Swipe",
     "slug": "foto-swipe",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0E0E11",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "de.local.fotoswipe"
     },
     "android": {
+      "package": "de.local.fotoswipe",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0E0E11",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +23,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Foto Swipe braucht Zugriff auf deine Fotos, damit du sie durchsehen und Aussortiertes löschen kannst. Nichts verlässt dein Gerät.",
+          "savePhotosPermission": "Foto Swipe braucht Schreibzugriff, um aussortierte Fotos zu löschen.",
+          "preventAutomaticLimitedAccessAlert": true,
+          "granularPermissions": ["photo"]
+        }
+      ],
+      "expo-image"
+    ]
   }
 }
