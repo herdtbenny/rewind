@@ -125,7 +125,9 @@ export function PeriodsScreen(props: Props) {
                   {period.subtitle && <Text style={styles.rowSub}>{period.subtitle}</Text>}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.count}>{total} Fotos</Text>
+                  <Text style={styles.count}>
+                    {total} {total === 1 ? 'Foto' : 'Fotos'}
+                  </Text>
                   <Text style={[styles.rowSub, open === 0 && { color: colors.keep }]}>
                     {open === 0 ? 'fertig' : `${open} offen`}
                     {trash > 0 ? ` · ${trash} weg` : ''}

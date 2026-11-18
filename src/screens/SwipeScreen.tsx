@@ -58,6 +58,24 @@ export function SwipeScreen({ period, decisions, onDecide, onUndo, onResetPeriod
     return { keep, trash, total: photos?.length ?? 0 };
   }, [photos, decisions]);
 
+  // Button-Taps, die kommen, während die vorige Karte noch rausfliegt, werden gepuffert
+  // und auf die nächsten Karten angewendet – so geht bei schnellem Tippen nichts verloren.
+  const pending = useRef<Decision[]>([]);
+
+  const press = (d: Decision) => {
+    if (!current) return;
+    if (!card.current?.swipe(d) && pending.current.length < 5) pending.current.push(d);
+  };
+
+  useEffect(() => {
+    if (!current || pending.current.length === 0) return;
+    const d = pending.current.shift()!;
+    const id = requestAnimationFrame(() => {
+      if (!card.current?.swipe(d)) pending.current.unshift(d);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [index, current]);
+
   const handleDecide = (photo: Photo, d: Decision) => {
     onDecide(photo.id, d);
     setHistory((h) => [...h, { photo, decision: d }]);
@@ -66,6 +84,7 @@ export function SwipeScreen({ period, decisions, onDecide, onUndo, onResetPeriod
   };
 
   const undo = () => {
+    pending.current = [];
     const last = history[history.length - 1];
     if (!last) return;
     onUndo(last.photo.id);
@@ -145,7 +164,7 @@ export function SwipeScreen({ period, decisions, onDecide, onUndo, onResetPeriod
           label="✕"
           color={colors.trash}
           disabled={!current}
-          onPress={() => card.current?.swipe('trash')}
+          onPress={() => press('trash')}
         />
         <RoundButton testID="btn-undo" label="↺" small color={colors.muted} disabled={history.length === 0} onPress={undo} />
         <RoundButton
@@ -153,7 +172,7 @@ export function SwipeScreen({ period, decisions, onDecide, onUndo, onResetPeriod
           label="♥"
           color={colors.keep}
           disabled={!current}
-          onPress={() => card.current?.swipe('keep')}
+          onPress={() => press('keep')}
         />
       </View>
       <Text style={styles.hint}>

@@ -17,7 +17,8 @@ import { formatDate } from '../periods';
 import type { Decision } from '../storage';
 import { colors, radius } from '../theme';
 
-export type SwipeCardHandle = { swipe: (d: Decision) => void };
+/** swipe() liefert false, wenn die Karte gerade schon rausfliegt. */
+export type SwipeCardHandle = { swipe: (d: Decision) => boolean };
 
 type Props = {
   photo: Photo;
@@ -56,7 +57,13 @@ export function SwipeCard({ photo, onDecide, enterFrom, ref }: Props) {
     );
   };
 
-  useImperativeHandle(ref, () => ({ swipe: (d: Decision) => flyOut(d) }));
+  useImperativeHandle(ref, () => ({
+    swipe: (d: Decision) => {
+      if (locked.get()) return false;
+      flyOut(d);
+      return true;
+    },
+  }));
 
   const pan = usePanGesture({
     onUpdate: (e) => {
