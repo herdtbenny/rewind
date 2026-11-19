@@ -1,18 +1,24 @@
 // Zugriff auf die Fotomediathek über expo-media-library.
 // Seit SDK 58 liegt die klassische Async-API (getAssetsAsync, deleteAssetsAsync, …)
 // unter "expo-media-library/legacy". Sie liefert pro Aufruf alle Felder, die wir
-// brauchen (id, uri, creationTime), und funktioniert auch in Expo Go.
+// brauchen (id, uri, creationTime, Medientyp, Subtypen), und funktioniert auch in Expo Go.
+import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
 export type Photo = {
   id: string;
-  uri: string;
+  uri: string; // ph://… – expo-image zeigt damit Fotos und Video-Vorschaubilder
   creationTime: number;
   width: number;
   height: number;
+  isVideo: boolean;
+  duration: number; // Sekunden, 0 bei Fotos
+  isScreenshot: boolean;
 };
 
 export type Access = 'all' | 'limited' | 'none' | 'undetermined';
+
+const MEDIA = [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video];
 
 function toAccess(p: MediaLibrary.PermissionResponse): Access {
   if (p.status === 'undetermined') return 'undetermined';
@@ -21,19 +27,19 @@ function toAccess(p: MediaLibrary.PermissionResponse): Access {
 }
 
 export async function getAccess(): Promise<{ access: Access; canAskAgain: boolean }> {
-  const p = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+  const p = await MediaLibrary.getPermissionsAsync(false, ['photo', 'video']);
   return { access: toAccess(p), canAskAgain: p.canAskAgain };
 }
 
-/** Lese- UND Schreibzugriff anfragen (writeOnly = false). Schreiben braucht es zum Löschen. */
+/** Lese- UND Schreibzugriff anfragen (writeOnly = false). Schreiben braucht es zum Löschen und für Favoriten. */
 export async function requestAccess(): Promise<{ access: Access; canAskAgain: boolean }> {
-  const p = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+  const p = await MediaLibrary.requestPermissionsAsync(false, ['photo', 'video']);
   return { access: toAccess(p), canAskAgain: p.canAskAgain };
 }
 
 /** Bei „Ausgewählte Fotos“: System-Dialog zum Ändern der Auswahl öffnen. */
 export async function changeLimitedSelection(): Promise<void> {
-  await MediaLibrary.presentPermissionsPickerAsync(['photo']);
+  await MediaLibrary.presentPermissionsPickerAsync(['photo', 'video']);
 }
 
 function toPhoto(a: MediaLibrary.Asset): Photo {
@@ -43,12 +49,15 @@ function toPhoto(a: MediaLibrary.Asset): Photo {
     creationTime: a.creationTime,
     width: a.width,
     height: a.height,
+    isVideo: a.mediaType === MediaLibrary.MediaType.video,
+    duration: a.duration ?? 0,
+    isScreenshot: a.mediaSubtypes?.includes('screenshot') ?? false,
   };
 }
 
 const PAGE = 500;
 
-/** Ganze Mediathek (nur Fotos) seitenweise einlesen – für die Übersicht pro Zeitraum. */
+/** Ganze Mediathek (Fotos + Videos) seitenweise einlesen – für die Übersicht pro Zeitraum. */
 export async function scanLibrary(onProgress?: (loaded: number, total: number) => void): Promise<Photo[]> {
   const out: Photo[] = [];
   let after: string | undefined;
@@ -56,7 +65,7 @@ export async function scanLibrary(onProgress?: (loaded: number, total: number) =
     const page = await MediaLibrary.getAssetsAsync({
       first: PAGE,
       after,
-      mediaType: MediaLibrary.MediaType.photo,
+      mediaType: MEDIA,
       sortBy: [[MediaLibrary.SortBy.creationTime, false]],
     });
     for (const a of page.assets) out.push(toPhoto(a));
@@ -67,7 +76,7 @@ export async function scanLibrary(onProgress?: (loaded: number, total: number) =
   return out;
 }
 
-/** Fotos eines Zeitraums frisch aus der Mediathek holen (createdAfter/createdBefore + Paging). */
+/** Medien eines Zeitraums frisch aus der Mediathek holen (createdAfter/createdBefore + Paging). */
 export async function loadPeriod(start: number, end: number): Promise<Photo[]> {
   const out: Photo[] = [];
   let after: string | undefined;
@@ -75,7 +84,7 @@ export async function loadPeriod(start: number, end: number): Promise<Photo[]> {
     const page = await MediaLibrary.getAssetsAsync({
       first: PAGE,
       after,
-      mediaType: MediaLibrary.MediaType.photo,
+      mediaType: MEDIA,
       // Beide Grenzen sind auf iOS exklusiv ("creationDate > x" / "< y").
       createdAfter: start - 1,
       createdBefore: end,
@@ -89,8 +98,67 @@ export async function loadPeriod(start: number, end: number): Promise<Photo[]> {
 }
 
 /**
- * Löscht alle übergebenen Fotos mit EINER System-Bestätigung.
- * iOS: Fotos landen 30 Tage im Album „Zuletzt gelöscht“.
+ * Lokale Datei-URL (file://…), z. B. für Dateigröße oder Video-Wiedergabe.
+ * Standardmäßig wird nichts aus iCloud nachgeladen; mit allowNetwork darf iOS
+ * das Original holen (für Videos nötig, wenn PhotoKit sonst kein Asset liefert).
+ */
+export async function getLocalUri(id: string, allowNetwork = false): Promise<string | undefined> {
+  try {
+    const info = await MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: allowNetwork });
+    return info.localUri ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Abspielbare URL für ein Video: erst lokal, sonst mit Erlaubnis zum Nachladen. */
+export async function getVideoUri(id: string): Promise<string | undefined> {
+  return (await getLocalUri(id)) ?? (await getLocalUri(id, true));
+}
+
+/** Dateigröße in Bytes (0, wenn unbekannt, z. B. nur in iCloud). */
+export async function getFileSize(id: string): Promise<number> {
+  const uri = await getLocalUri(id);
+  if (!uri) return 0;
+  try {
+    return new File(uri).size || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Dateigrößen für mehrere Einträge, mit begrenzter Parallelität. */
+export async function getFileSizes(ids: string[], known: Record<string, number> = {}): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const todo = ids.filter((id) => known[id] === undefined);
+  for (const id of ids) if (known[id] !== undefined) out[id] = known[id];
+  let i = 0;
+  const worker = async () => {
+    while (i < todo.length) {
+      const id = todo[i++];
+      out[id] = await getFileSize(id);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return out;
+}
+
+/** Favorit in der Fotos-App setzen/entfernen. Liefert den vorherigen Zustand. */
+export async function setFavorite(id: string, fav: boolean): Promise<boolean | undefined> {
+  try {
+    const info = await MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: false });
+    const before = !!info.isFavorite;
+    if (before !== fav) await MediaLibrary.setAssetFavoriteAsync(id, fav);
+    return before;
+  } catch (e) {
+    console.warn('setFavorite', e);
+    return undefined;
+  }
+}
+
+/**
+ * Löscht alle übergebenen Einträge mit EINER System-Bestätigung.
+ * iOS: Sie landen 30 Tage im Album „Zuletzt gelöscht“.
  * Liefert false, wenn der Nutzer den System-Dialog abbricht.
  */
 export async function deletePhotos(ids: string[]): Promise<boolean> {
@@ -107,4 +175,27 @@ export async function deletePhotos(ids: string[]): Promise<boolean> {
 export function onLibraryChange(cb: () => void): () => void {
   const sub = MediaLibrary.addListener(() => cb());
   return () => sub.remove();
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 1 })} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6).toLocaleString('de-DE')} MB`;
+  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} KB`;
+  return `${bytes} B`;
+}
+
+export function formatDuration(sec: number): string {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** „3 Fotos“, „1 Video“, „2 Fotos & 1 Video“ – für Texte, die beides zählen. */
+export function countLabel(items: Pick<Photo, 'isVideo'>[]): string {
+  const v = items.filter((p) => p.isVideo).length;
+  const f = items.length - v;
+  const fs = `${f} ${f === 1 ? 'Foto' : 'Fotos'}`;
+  const vs = `${v} ${v === 1 ? 'Video' : 'Videos'}`;
+  if (v === 0) return fs;
+  if (f === 0) return vs;
+  return `${fs} und ${vs}`;
 }

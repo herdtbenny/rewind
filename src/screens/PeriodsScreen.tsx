@@ -2,16 +2,24 @@ import { useMemo } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, Button, ProgressBar } from '../components/ui';
-import type { Access, Photo } from '../media';
+import { formatBytes, type Access, type Photo } from '../media';
 import { periodFor, type Period, type PeriodMode } from '../periods';
-import type { Decisions } from '../storage';
+import { streak, type Decisions, type Stats } from '../storage';
 import { colors, radius } from '../theme';
 
-export type PeriodStats = { period: Period; total: number; decided: number; trash: number };
+export type PeriodStats = {
+  period: Period;
+  total: number;
+  decided: number;
+  trash: number;
+  videos: number;
+  screenshots: number;
+};
 
 type Props = {
   photos: Photo[];
   decisions: Decisions;
+  stats: Stats;
   mode: PeriodMode;
   access: Access;
   refreshing: boolean;
@@ -34,8 +42,10 @@ export function PeriodsScreen(props: Props) {
     for (const p of photos) {
       const period = periodFor(p.creationTime, mode);
       let s = map.get(period.key);
-      if (!s) map.set(period.key, (s = { period, total: 0, decided: 0, trash: 0 }));
+      if (!s) map.set(period.key, (s = { period, total: 0, decided: 0, trash: 0, videos: 0, screenshots: 0 }));
       s.total++;
+      if (p.isVideo) s.videos++;
+      if (p.isScreenshot) s.screenshots++;
       const d = decisions[p.id];
       if (d) s.decided++;
       if (d === 'trash') {
@@ -58,7 +68,8 @@ export function PeriodsScreen(props: Props) {
 
   const header = (
     <View style={{ gap: 16, paddingBottom: 8 }}>
-      <Text style={styles.title}>Foto Swipe</Text>
+      <Text style={styles.title}>Rewind</Text>
+      <StatsCard stats={props.stats} />
       <View style={styles.segment}>
         {(['month', 'week'] as const).map((m) => (
           <Pressable
@@ -90,7 +101,7 @@ export function PeriodsScreen(props: Props) {
       {trashTotal > 0 && (
         <Pressable testID="review-all" onPress={props.onReviewAll} style={styles.trashBar}>
           <Text style={styles.trashText}>
-            {trashTotal} {trashTotal === 1 ? 'Foto' : 'Fotos'} zum Löschen vorgemerkt
+            {trashTotal} zum Löschen vorgemerkt
           </Text>
           <Text style={styles.trashCta}>Prüfen & löschen ›</Text>
         </Pressable>
@@ -111,7 +122,13 @@ export function PeriodsScreen(props: Props) {
         }
         renderItem={({ item }) => {
           if (item.type === 'year') return <Text style={styles.year}>{item.year}</Text>;
-          const { period, total, decided, trash } = item.stats;
+          const { period, total, decided, trash, videos, screenshots } = item.stats;
+          const extra = [
+            videos ? `${videos} ${videos === 1 ? 'Video' : 'Videos'}` : '',
+            screenshots ? `${screenshots} Screenshots` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ');
           const open = total - decided;
           return (
             <Pressable
@@ -123,10 +140,11 @@ export function PeriodsScreen(props: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{period.title}</Text>
                   {period.subtitle && <Text style={styles.rowSub}>{period.subtitle}</Text>}
+                  {!!extra && <Text style={styles.rowSub}>{extra}</Text>}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.count}>
-                    {total} {total === 1 ? 'Foto' : 'Fotos'}
+                    {total} {total === 1 ? 'Eintrag' : 'Einträge'}
                   </Text>
                   <Text style={[styles.rowSub, open === 0 && { color: colors.keep }]}>
                     {open === 0 ? 'fertig' : `${open} offen`}
@@ -143,7 +161,45 @@ export function PeriodsScreen(props: Props) {
   );
 }
 
+function StatsCard({ stats }: { stats: Stats }) {
+  const days = streak(stats.activeDays);
+  if (stats.deletedCount === 0 && days === 0) {
+    return (
+      <View style={[styles.stats, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.statsBig, { color: colors.text, fontSize: 18 }]}>Spul zurück und räum auf</Text>
+        <Text style={[styles.statsSmall, { color: colors.muted }]}>
+          Wähl einen Monat, wisch nach links zum Aussortieren, nach rechts zum Behalten, nach oben für Favoriten.
+        </Text>
+      </View>
+    );
+  }
+  if (stats.deletedCount === 0) {
+    return (
+      <View style={styles.stats} testID="stats-card">
+        <Text style={styles.statsKicker}>Du bist dran</Text>
+        <Text style={styles.statsBig}>
+          {days} {days === 1 ? 'Tag' : 'Tage'} in Folge
+        </Text>
+        <Text style={styles.statsSmall}>Noch nichts gelöscht – Aussortiertes löschst du am Ende eines Zeitraums.</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.stats} testID="stats-card">
+      <Text style={styles.statsKicker}>Bisher aufgeräumt</Text>
+      <Text style={styles.statsBig}>{formatBytes(stats.freedBytes)} frei</Text>
+      <Text style={styles.statsSmall}>
+        {stats.deletedCount} gelöscht · {days} {days === 1 ? 'Tag' : 'Tage'} in Folge
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  stats: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, gap: 2 },
+  statsKicker: { color: colors.accentInk, fontSize: 13, fontWeight: '600' },
+  statsBig: { color: colors.accentInk, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  statsSmall: { color: colors.accentInk, fontSize: 13, lineHeight: 18 },
   root: { flex: 1, backgroundColor: colors.bg },
   title: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
   segment: {

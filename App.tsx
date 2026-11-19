@@ -7,6 +7,7 @@ import {
   changeLimitedSelection,
   deletePhotos,
   getAccess,
+  getFileSizes,
   onLibraryChange,
   requestAccess,
   scanLibrary,
@@ -19,13 +20,20 @@ import { PermissionScreen } from './src/screens/PermissionScreen';
 import { ReviewScreen } from './src/screens/ReviewScreen';
 import { SwipeScreen } from './src/screens/SwipeScreen';
 import {
+  dayKey,
+  emptyStats,
   flushDecisions,
   loadDecisions,
   loadMode,
+  loadSizes,
+  loadStats,
   saveDecisions,
   saveMode,
+  saveSizes,
+  saveStats,
   type Decision,
   type Decisions,
+  type Stats,
 } from './src/storage';
 import { colors } from './src/theme';
 
@@ -52,15 +60,39 @@ function Main() {
   const [decisions, setDecisions] = useState<Decisions>({});
   const [mode, setMode] = useState<PeriodMode>('month');
   const [screen, setScreen] = useState<Screen>({ name: 'periods' });
+  const [stats, setStats] = useState<Stats>(emptyStats);
+  const sizesRef = useRef<Record<string, number>>({});
   const decisionsRef = useRef(decisions);
   decisionsRef.current = decisions;
+
+  const updateStats = useCallback((fn: (s: Stats) => Stats) => {
+    setStats((prev) => {
+      const next = fn(prev);
+      saveStats(next);
+      return next;
+    });
+  }, []);
+
+  /** Dateigrößen (gecacht) für die Speicher-Bilanz. */
+  const measureSizes = useCallback(async (ids: string[]) => {
+    const res = await getFileSizes(ids, sizesRef.current);
+    sizesRef.current = { ...sizesRef.current, ...res };
+    saveSizes(sizesRef.current);
+    return res;
+  }, []);
+  const measureBytes = useCallback(
+    async (ids: string[]) => Object.values(await measureSizes(ids)).reduce((a, b) => a + b, 0),
+    [measureSizes],
+  );
 
   // Start: gespeicherten Fortschritt + Berechtigungsstatus laden, ggf. direkt nach Zugriff fragen
   useEffect(() => {
     (async () => {
-      const [d, m, a] = await Promise.all([loadDecisions(), loadMode(), getAccess()]);
+      const [d, m, a, st, sz] = await Promise.all([loadDecisions(), loadMode(), getAccess(), loadStats(), loadSizes()]);
       setDecisions(d);
       setMode(m);
+      setStats(st);
+      sizesRef.current = sz;
       setCanAskAgain(a.canAskAgain);
       if (a.access === 'undetermined') {
         const r = await requestAccess();
@@ -128,14 +160,23 @@ function Main() {
     });
   };
 
-  const decide = (id: string, d: Decision) => update((x) => void (x[id] = d));
+  const decide = (id: string, d: Decision) => {
+    update((x) => void (x[id] = d));
+    const today = dayKey();
+    if (!stats.activeDays.includes(today)) {
+      updateStats((s) => (s.activeDays.includes(today) ? s : { ...s, activeDays: [...s.activeDays, today].slice(-400) }));
+    }
+  };
   const undo = (id: string) => update((x) => void delete x[id]);
   const resetPeriod = (ids: string[]) => update((x) => ids.forEach((id) => delete x[id]));
 
   const doDelete = async (deleteIds: string[], keepIds: string[], back: BaseScreen) => {
     if (keepIds.length) update((x) => keepIds.forEach((id) => (x[id] = 'keep')));
+    const sizes = await measureSizes(deleteIds).catch(() => ({}) as Record<string, number>);
     const ok = await deletePhotos(deleteIds);
     if (!ok) return false;
+    const freed = deleteIds.reduce((sum, id) => sum + (sizes[id] ?? 0), 0);
+    updateStats((s) => ({ ...s, deletedCount: s.deletedCount + deleteIds.length, freedBytes: s.freedBytes + freed }));
     update((x) => deleteIds.forEach((id) => delete x[id]));
     const deleted = new Set(deleteIds);
     setPhotos((p) => p?.filter((x) => !deleted.has(x.id)) ?? p);
@@ -144,7 +185,7 @@ function Main() {
     if (deleteIds.length) {
       Alert.alert(
         'Gelöscht',
-        `${deleteIds.length} ${deleteIds.length === 1 ? 'Foto liegt' : 'Fotos liegen'} jetzt 30 Tage unter „Zuletzt gelöscht“ in der Fotos-App.`,
+        `${deleteIds.length} ${deleteIds.length === 1 ? 'Eintrag liegt' : 'Einträge liegen'} jetzt 30 Tage unter „Zuletzt gelöscht“ in der Fotos-App.`,
       );
     }
     return true;
@@ -166,7 +207,7 @@ function Main() {
   if (!photos) {
     return (
       <Loading
-        text={progress ? `Fotos werden gezählt … ${progress.loaded} / ${progress.total}` : 'Fotos werden gezählt …'}
+        text={progress ? `Mediathek wird gelesen … ${progress.loaded} / ${progress.total}` : 'Mediathek wird gelesen …'}
       />
     );
   }
@@ -181,6 +222,7 @@ function Main() {
         onResetPeriod={resetPeriod}
         onBack={() => setScreen({ name: 'periods' })}
         onReview={(list) => setScreen({ name: 'review', title: screen.period.title, photos: list, back: screen })}
+        measureBytes={measureBytes}
       />
     );
   }
@@ -191,6 +233,7 @@ function Main() {
         photos={screen.photos}
         onBack={() => setScreen(screen.back)}
         onDelete={(del, keep) => doDelete(del, keep, screen.back)}
+        measureSizes={measureSizes}
       />
     );
   }
@@ -198,6 +241,7 @@ function Main() {
     <PeriodsScreen
       photos={photos}
       decisions={decisions}
+      stats={stats}
       mode={mode}
       access={access}
       refreshing={refreshing}

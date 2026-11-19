@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '../components/ui';
-import type { Photo } from '../media';
+import { Button, HoldButton } from '../components/ui';
+import { countLabel, formatBytes, formatDuration, type Photo } from '../media';
 import { colors, radius } from '../theme';
 
 type Props = {
@@ -12,12 +12,14 @@ type Props = {
   /** Löscht die ausgewählten Fotos wirklich; abgewählte werden als „behalten“ markiert. */
   onDelete: (deleteIds: string[], keepIds: string[]) => Promise<boolean>;
   onBack: () => void;
+  /** Bytes pro Foto-ID (für die Speicher-Bilanz). */
+  measureSizes: (ids: string[]) => Promise<Record<string, number>>;
 };
 
 const COLS = 3;
 const GAP = 4;
 
-export function ReviewScreen({ title, photos, onDelete, onBack }: Props) {
+export function ReviewScreen({ title, photos, onDelete, onBack, measureSizes }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
@@ -25,6 +27,17 @@ export function ReviewScreen({ title, photos, onDelete, onBack }: Props) {
   const size = (width - 32 - GAP * (COLS - 1)) / COLS;
 
   const selected = photos.filter((p) => !unselected.has(p.id));
+  const [sizes, setSizes] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    measureSizes(photos.map((p) => p.id)).then((s) => alive && setSizes(s));
+    return () => {
+      alive = false;
+    };
+  }, [photos, measureSizes]);
+
+  const bytes = sizes ? selected.reduce((sum, p) => sum + (sizes[p.id] ?? 0), 0) : null;
 
   const toggle = (id: string) =>
     setUnselected((s) => {
@@ -55,7 +68,7 @@ export function ReviewScreen({ title, photos, onDelete, onBack }: Props) {
         <Text style={styles.title}>{title}</Text>
       </View>
       <Text style={styles.lead}>
-        Tippe ein Foto an, um es doch zu behalten. Ausgewählt: {selected.length} von {photos.length}.
+        Tippe an, was du doch behalten willst. Ausgewählt: {selected.length} von {photos.length}.
       </Text>
 
       <FlatList
@@ -77,6 +90,11 @@ export function ReviewScreen({ title, photos, onDelete, onBack }: Props) {
               <View style={[styles.check, on ? styles.checkOn : styles.checkOff]}>
                 <Text style={styles.checkText}>{on ? '✓' : ''}</Text>
               </View>
+              {item.isVideo && (
+                <View style={styles.videoTag}>
+                  <Text style={styles.videoText}>▶ {formatDuration(item.duration)}</Text>
+                </View>
+              )}
               {!on && (
                 <View style={styles.keepTag}>
                   <Text style={styles.keepText}>behalten</Text>
@@ -89,21 +107,20 @@ export function ReviewScreen({ title, photos, onDelete, onBack }: Props) {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <Text style={styles.note}>
-          iOS fragt einmal nach, dann werden alle ausgewählten Fotos gelöscht. Sie liegen danach noch 30 Tage im Album
-          „Zuletzt gelöscht“ in der Fotos-App und lassen sich dort wiederherstellen.
+          iOS fragt einmal für alle nach. Gelöschtes liegt danach 30 Tage im Album „Zuletzt gelöscht“ der Fotos-App und
+          lässt sich dort wiederherstellen.
         </Text>
-        <Button
-          testID="delete-selected"
-          variant="danger"
-          label={
-            selected.length === 0
-              ? 'Alle behalten'
-              : `${selected.length} ${selected.length === 1 ? 'Foto' : 'Fotos'} löschen`
-          }
-          disabled={selected.length === 0 && unselected.size === 0}
-          loading={busy}
-          onPress={run}
-        />
+        {selected.length === 0 ? (
+          <Button testID="delete-selected" label="Alle behalten" loading={busy} onPress={run} />
+        ) : (
+          <HoldButton
+            testID="delete-selected"
+            label={`${countLabel(selected)} löschen`}
+            holdLabel={`Gedrückt halten · ${bytes === null ? 'Größe wird berechnet' : `${formatBytes(bytes)} werden frei`}`}
+            loading={busy}
+            onComplete={run}
+          />
+        )}
       </View>
     </View>
   );
@@ -139,6 +156,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
+  videoTag: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(11,11,15,0.75)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  videoText: { color: colors.text, fontSize: 11, fontWeight: '700' },
   keepText: { color: '#000', fontSize: 11, fontWeight: '800' },
   footer: {
     gap: 12,

@@ -10,13 +10,13 @@ export function PermissionScreen({ canAskAgain, onRequest }: Props) {
   return (
     <View style={[styles.root, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
       <View style={{ gap: 14 }}>
-        <Text style={styles.title}>Foto Swipe</Text>
+        <Text style={styles.title}>Rewind</Text>
         <Text style={styles.text}>
-          Räum deine Galerie auf: Fotos nach Monat oder Woche durchgehen, nach links wischen zum Aussortieren, nach
-          rechts zum Behalten – und am Ende alles Aussortierte auf einmal löschen.
+          Spul deine Galerie Monat für Monat zurück: nach links wischen zum Aussortieren, nach rechts zum Behalten, nach
+          oben für Favoriten – und am Ende alles Aussortierte auf einmal löschen.
         </Text>
         <Text style={styles.text}>
-          Dafür braucht die App Zugriff auf deine Fotos. Alles bleibt auf deinem Handy – es gibt keinen Server und
+          Dafür braucht Rewind Zugriff auf deine Fotos und Videos. Alles bleibt auf deinem Handy – es gibt keinen Server und
           keinen Upload.
         </Text>
       </View>
