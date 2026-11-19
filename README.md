@@ -36,7 +36,13 @@ Technik in Kürze:
    ```bash
    sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
    ```
-3. Node.js 20+ (vorhanden: Node 24) und dann `npm install` im Projektordner.
+3. Xcode-Lizenz akzeptieren (einmalig): `sudo xcodebuild -license accept`.
+4. **CocoaPods** (für den nativen iOS-Build). Normalerweise `brew install cocoapods`. Auf diesem Mac ist Homebrew aber nicht für deinen Benutzer beschreibbar und die System-Ruby (2.6) zu alt. Deshalb liegt CocoaPods 1.17 in `~/.cocoapods-gems` und läuft mit Homebrews mitgelieferter Ruby 3.4, gestartet über das Wrapper-Skript `~/.cocoapods-gems/wrapper/pod`. Vor dem Build einmal in den PATH nehmen:
+   ```bash
+   export PATH="$HOME/.cocoapods-gems/wrapper:$PATH"
+   ```
+   (Dauerhaft: dieselbe Zeile in `~/.zshrc`.) Falls Homebrew die Ruby 3.4.5 später aufräumt, CocoaPods mit `brew install cocoapods` neu einrichten, sobald Homebrew wieder beschreibbar ist.
+5. Node.js 20+ (vorhanden: Node 24) und dann `npm install` im Projektordner.
 
 ## Starten im iOS-Simulator (Development Build, empfohlen)
 
@@ -57,6 +63,33 @@ npm run test-photos
 (Das Skript braucht Pillow: `pip3 install pillow`.) In der App danach die Übersicht nach unten ziehen, um neu einzulesen. Meist aktualisiert sie sich auch von selbst.
 
 **Löschen im Simulator testen:** Fotos aussortieren, „prüfen & löschen“ antippen, „Löschen“ im System-Dialog bestätigen, danach in der Fotos-App des Simulators unter „Zuletzt gelöscht“ nachsehen.
+
+### Alternative: Release-Build ohne Dev-Server
+
+Für einen Test ohne laufenden Metro-Server (das JavaScript steckt dann in der App) baut man direkt mit `xcodebuild`. So wurde der Prototyp getestet:
+
+```bash
+npx expo prebuild --platform ios
+```
+```bash
+cd ios && xcodebuild -workspace FotoSwipe.xcworkspace -scheme FotoSwipe -configuration Release -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO build
+```
+```bash
+xcrun simctl install booted build/dd/Build/Products/Release-iphonesimulator/FotoSwipe.app && xcrun simctl launch booted de.local.fotoswipe
+```
+
+Fotozugriff für einen frischen Test zurücksetzen: `xcrun simctl privacy booted reset photos de.local.fotoswipe`.
+
+### Im Simulator getestet (iOS 26.4, iPhone 17 Pro)
+
+- Berechtigungsdialog mit deutschem Text, „Vollen Zugriff erlauben“ → Übersicht
+- Übersicht nach Monaten und Kalenderwochen (inkl. Monatswechsel innerhalb einer KW)
+- Swipen links/rechts mit Stempel und Kartenrotation, Buttons ✕/♥, Rückgängig (Karte fliegt zurück)
+- Schnelles Tippen auf die Buttons: alle Taps werden nacheinander verarbeitet
+- Fortschritt bleibt nach App-Neustart erhalten („5 offen · 3 weg“)
+- Lösch-Übersicht: Abwählen markiert ein Foto als „behalten“; iOS zeigt **einen** Bestätigungsdialog für alle Fotos („…will be in Recently Deleted for 30 days“)
+- Abbrechen im iOS-Dialog → Hinweis „Nicht gelöscht“, Auswahl bleibt
+- Nach dem Löschen: Fotos-App zeigt die richtige Anzahl (46 → 39), abgewählte Fotos sind noch da
 
 ### Schneller Test mit Expo Go (ohne Xcode)
 
