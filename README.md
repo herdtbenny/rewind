@@ -55,7 +55,7 @@ Technik in Kürze:
 ## Starten im iOS-Simulator (Development Build, empfohlen)
 
 ```bash
-cd ~/foto-swipe
+cd ~/rewind
 npm install
 npm run ios
 ```

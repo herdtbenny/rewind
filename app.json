@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Rewind",
-    "slug": "foto-swipe",
+    "slug": "rewind",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
