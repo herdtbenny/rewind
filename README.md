@@ -102,7 +102,7 @@ Fotozugriff für einen frischen Test zurücksetzen: `xcrun simctl privacy booted
 
 **Im Simulator nicht prüfbar:**
 - *Screenshots zuerst:* Der Simulator markiert importierte Bilder nie als Screenshot (auch nicht mit Screenshot-EXIF). Auf dem iPhone setzt iOS die Kennzeichnung bei echten Screenshots selbst; Rewind liest sie über `mediaSubtypes`.
-- *Video abspielen:* PhotoKit liefert im Simulator für importierte Videos keine Datei (`requestAVAsset` ergibt `nil`), daher zeigt die Karte dort nur Vorschaubild und Länge. Auf dem Gerät ist das der normale Weg zur Videodatei; das muss beim ersten Test auf dem iPhone geprüft werden. Aus demselben Grund ist die Speicher-Bilanz für Videos im Simulator 0.
+- *Video abspielen (gelöst):* Ab iOS 26 liefert PhotoKit Videos in der „aktuellen“ Version als Komposition, deren Export in `expo-media-library` scheitert („Failed to export the requested video“) – auf dem Simulator wie auf dem iPhone. Rewind holt die Videodatei deshalb über die neue API in der **Originalversion** (`Asset.getUri({ version: ORIGINAL })`). Folge: Bearbeitungen wie ein Zuschnitt werden in der Vorschau nicht mit abgespielt.
 
 ### Schneller Test mit Expo Go (ohne Xcode)
 

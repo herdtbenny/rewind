@@ -3,6 +3,7 @@
 // unter "expo-media-library/legacy". Sie liefert pro Aufruf alle Felder, die wir
 // brauchen (id, uri, creationTime, Medientyp, Subtypen), und funktioniert auch in Expo Go.
 import { File } from 'expo-file-system';
+import { Asset, AssetUriVersion } from 'expo-media-library';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
 export type Photo = {
@@ -111,14 +112,27 @@ export async function getLocalUri(id: string, allowNetwork = false): Promise<str
   }
 }
 
-/** Abspielbare URL für ein Video: erst lokal, sonst mit Erlaubnis zum Nachladen. */
+/**
+ * Abspielbare Datei-URL für ein Video.
+ * Ab iOS 26 liefert PhotoKit Videos in der „aktuellen“ Version als Komposition, deren Export
+ * in expo-media-library fehlschlägt. Die Originalversion kommt dagegen direkt als Datei –
+ * deshalb zuerst über die neue API mit AssetUriVersion.ORIGINAL (Bearbeitungen wie Zuschnitt
+ * sind dann nicht enthalten), danach die übrigen Wege als Rückfall.
+ */
 export async function getVideoUri(id: string): Promise<string | undefined> {
+  for (const version of [AssetUriVersion.ORIGINAL, AssetUriVersion.CURRENT]) {
+    try {
+      return await new Asset(`ph://${id}`).getUri({ version });
+    } catch {
+      // nächsten Weg probieren
+    }
+  }
   return (await getLocalUri(id)) ?? (await getLocalUri(id, true));
 }
 
 /** Dateigröße in Bytes (0, wenn unbekannt, z. B. nur in iCloud). */
-export async function getFileSize(id: string): Promise<number> {
-  const uri = await getLocalUri(id);
+export async function getFileSize(id: string, isVideo = false): Promise<number> {
+  const uri = isVideo ? await getVideoUri(id) : await getLocalUri(id);
   if (!uri) return 0;
   try {
     return new File(uri).size || 0;
@@ -128,15 +142,19 @@ export async function getFileSize(id: string): Promise<number> {
 }
 
 /** Dateigrößen für mehrere Einträge, mit begrenzter Parallelität. */
-export async function getFileSizes(ids: string[], known: Record<string, number> = {}): Promise<Record<string, number>> {
+export async function getFileSizes(
+  ids: string[],
+  known: Record<string, number> = {},
+  videoIds: Set<string> = new Set(),
+): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  const todo = ids.filter((id) => known[id] === undefined);
-  for (const id of ids) if (known[id] !== undefined) out[id] = known[id];
+  const todo = ids.filter((id) => !known[id]); // 0 = unbekannt, erneut messen
+  for (const id of ids) if (known[id]) out[id] = known[id];
   let i = 0;
   const worker = async () => {
     while (i < todo.length) {
       const id = todo[i++];
-      out[id] = await getFileSize(id);
+      out[id] = await getFileSize(id, videoIds.has(id));
     }
   };
   await Promise.all([worker(), worker(), worker(), worker()]);

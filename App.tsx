@@ -62,6 +62,7 @@ function Main() {
   const [screen, setScreen] = useState<Screen>({ name: 'periods' });
   const [stats, setStats] = useState<Stats>(emptyStats);
   const sizesRef = useRef<Record<string, number>>({});
+  const videoIdsRef = useRef<Set<string>>(new Set());
   const decisionsRef = useRef(decisions);
   decisionsRef.current = decisions;
 
@@ -75,7 +76,7 @@ function Main() {
 
   /** Dateigrößen (gecacht) für die Speicher-Bilanz. */
   const measureSizes = useCallback(async (ids: string[]) => {
-    const res = await getFileSizes(ids, sizesRef.current);
+    const res = await getFileSizes(ids, sizesRef.current, videoIdsRef.current);
     sizesRef.current = { ...sizesRef.current, ...res };
     saveSizes(sizesRef.current);
     return res;
@@ -108,6 +109,7 @@ function Main() {
     const list = await scanLibrary((loaded, total) => setProgress({ loaded, total }));
     setPhotos(list);
     setProgress(null);
+    videoIdsRef.current = new Set(list.filter((p) => p.isVideo).map((p) => p.id));
     // Entscheidungen zu Fotos entfernen, die es nicht mehr gibt (z. B. in der Fotos-App gelöscht).
     const ids = new Set(list.map((p) => p.id));
     const current = decisionsRef.current;

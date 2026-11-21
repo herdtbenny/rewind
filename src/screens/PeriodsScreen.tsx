@@ -189,7 +189,8 @@ function StatsCard({ stats }: { stats: Stats }) {
       <Text style={styles.statsKicker}>Bisher aufgeräumt</Text>
       <Text style={styles.statsBig}>{formatBytes(stats.freedBytes)} frei</Text>
       <Text style={styles.statsSmall}>
-        {stats.deletedCount} gelöscht · {days} {days === 1 ? 'Tag' : 'Tage'} in Folge
+        {stats.deletedCount} gelöscht
+        {days > 0 ? ` · ${days} ${days === 1 ? 'Tag' : 'Tage'} in Folge` : ''}
       </Text>
     </View>
   );
