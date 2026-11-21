@@ -55,7 +55,7 @@ Technik in Kürze:
 ## Starten im iOS-Simulator (Development Build, empfohlen)
 
 ```bash
-cd ~/rewind
+cd ~/myApps/rewind
 npm install
 npm run ios
 ```
@@ -116,19 +116,35 @@ Dann auf dem iPhone die App **Expo Go** aus dem App Store installieren und den Q
 
 Einschränkungen von Expo Go: Die Berechtigung gilt für Expo Go statt für „Rewind“, die Berechtigungstexte sind die von Expo Go, und Expo Go unterstützt nur die jeweils aktuelle SDK-Version. Für den echten Einsatz ist der Development Build gedacht.
 
-## Auf das eigene iPhone installieren
+## Auf ein iPhone installieren (per Kabel)
 
-Mit Xcode und einem Kabel geht das ohne kostenpflichtigen Account:
+Mit Xcode und einer kostenlosen Apple-ID, ohne Developer-Account. Funktioniert für jedes iPhone, auch für ein zweites Gerät (z. B. von Familie): signiert wird immer mit deiner Apple-ID auf diesem Mac.
 
-1. iPhone per Kabel anschließen. Auf dem iPhone unter *Einstellungen → Datenschutz & Sicherheit → Entwicklermodus* den Entwicklermodus einschalten (Neustart nötig).
-2. In Xcode unter *Settings → Accounts* deine Apple-ID hinzufügen. Das erzeugt ein kostenloses „Personal Team“.
-3. ```bash
-   npm run ios:device
-   ```
-   Beim ersten Mal ggf. `ios/Rewind.xcworkspace` in Xcode öffnen, unter *Signing & Capabilities* dein Personal Team wählen und die Bundle-ID bei Bedarf eindeutig machen (z. B. `de.<name>.rewind` in `app.json`).
-4. Auf dem iPhone unter *Einstellungen → Allgemein → VPN & Geräteverwaltung* dem Entwicklerzertifikat vertrauen.
+**Einmalig auf dem Mac**
+1. Xcode aus dem App Store installieren, einmal öffnen, iOS-Plattform mitinstallieren. Dann `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` und `sudo xcodebuild -license accept`.
+2. In Xcode unter *Xcode → Settings → Accounts → + → Apple Account* deine Apple-ID eintragen. Daraus entsteht dein kostenloses „Personal Team“.
+3. CocoaPods einrichten (siehe *Voraussetzungen*).
 
-Grenzen mit kostenloser Apple-ID: Die App läuft nur **7 Tage** und muss dann neu aus Xcode installiert werden. Es gehen höchstens 3 eigene Apps gleichzeitig.
+**Pro iPhone (beim ersten Mal)**
+1. iPhone per Kabel anschließen, entsperren und **„Diesem Computer vertrauen“** bestätigen (Code eingeben).
+2. Entwicklermodus einschalten: *Einstellungen → Datenschutz & Sicherheit → Entwicklermodus* → an, iPhone startet neu, danach noch einmal bestätigen. Taucht der Punkt nicht auf: in Xcode *Window → Devices and Simulators* öffnen, solange das iPhone angeschlossen ist.
+
+**Installieren**
+```bash
+npm run ios:device
+```
+Das Skript `scripts/install-iphone.sh` findet das per Kabel angeschlossene iPhone, liest dein Team aus Xcode, baut die Release-Version (JavaScript ist eingebettet, die App braucht danach keinen Mac), registriert das Gerät beim ersten Mal automatisch in deinem Team, installiert und startet die App. Sind mehrere iPhones angeschlossen: `npm run ios:device -- <UDID>` (die UDIDs listet das Skript auf).
+
+**Beim ersten Start auf dem iPhone:** *Einstellungen → Allgemein → VPN & Geräteverwaltung* → deine Apple-ID antippen → *Vertrauen*. Danach Rewind öffnen und beim Fotozugriff **„Vollzugriff erlauben“** wählen.
+
+**Danach auf dem Gerät prüfen:** Galerie-Übersicht, Swipen, Löschen (landet in „Zuletzt gelöscht“), Videos abspielen und „Screenshots zuerst“ – die letzten beiden ließen sich im Simulator nicht testen.
+
+**Falls Signieren scheitert:** Ist die Bundle-ID `de.local.rewind` für dein Team nicht nutzbar, in `app.json` eine eigene setzen (z. B. `de.<name>.rewind`) und `npx expo prebuild --platform ios --clean` ausführen. Ein anderes Team erzwingen: `REWIND_TEAM=<TEAMID> npm run ios:device`.
+
+**Grenzen der kostenlosen Apple-ID**
+- Die App läuft **7 Tage**, danach startet sie nicht mehr. Dann einfach wieder anschließen und `npm run ios:device` – Fortschritt und Statistik bleiben erhalten.
+- Apple begrenzt kostenlose Teams stark: höchstens 3 selbst signierte Apps gleichzeitig pro Gerät, nur wenige registrierte Geräte und neue App-IDs pro Woche.
+- Ohne Kabel/TestFlight und mit 1 Jahr Laufzeit geht es nur mit dem Apple Developer Program (99 €/Jahr).
 
 ## Grenzen
 
