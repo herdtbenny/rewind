@@ -5,6 +5,7 @@
 import { File } from 'expo-file-system';
 import { Asset, AssetUriVersion } from 'expo-media-library';
 import * as MediaLibrary from 'expo-media-library/legacy';
+import { exportVideo } from '../modules/rewind-video';
 
 export type Photo = {
   id: string;
@@ -113,26 +114,41 @@ export async function getLocalUri(id: string, allowNetwork = false): Promise<str
 }
 
 /**
- * Abspielbare Datei-URL für ein Video.
+ * Datei-URL des Videos in der Mediathek (ohne Kopie).
  * Ab iOS 26 liefert PhotoKit Videos in der „aktuellen“ Version als Komposition, deren Export
- * in expo-media-library fehlschlägt. Die Originalversion kommt dagegen direkt als Datei –
- * deshalb zuerst über die neue API mit AssetUriVersion.ORIGINAL (Bearbeitungen wie Zuschnitt
- * sind dann nicht enthalten), danach die übrigen Wege als Rückfall.
+ * in expo-media-library fehlschlägt – deshalb zuerst die Originalversion.
+ * Die Größe dieser Datei lässt sich lesen; abspielen darf ein eigener Player sie auf echten
+ * iPhones aber nicht (geschützter Bereich der Mediathek), siehe getVideoUri.
  */
-export async function getVideoUri(id: string): Promise<string | undefined> {
+async function getLibraryVideoUri(id: string): Promise<string | undefined> {
   for (const version of [AssetUriVersion.ORIGINAL, AssetUriVersion.CURRENT]) {
     try {
       return await new Asset(`ph://${id}`).getUri({ version });
     } catch {
-      // nächsten Weg probieren
+      // nächste Version versuchen
     }
   }
   return (await getLocalUri(id)) ?? (await getLocalUri(id, true));
 }
 
+/**
+ * Abspielbare Datei-URL für ein Video. Das native Modul lässt iOS das Video in den Cache
+ * von Rewind kopieren (wird wiederverwendet, max. 6 Videos). Ohne das Modul (Expo Go)
+ * bleibt nur die Mediathek-URL – die spielt nur im Simulator.
+ */
+export async function getVideoUri(id: string): Promise<string | undefined> {
+  try {
+    const copied = await exportVideo(id);
+    if (copied) return copied;
+  } catch {
+    // Rückfall unten
+  }
+  return getLibraryVideoUri(id);
+}
+
 /** Dateigröße in Bytes (0, wenn unbekannt, z. B. nur in iCloud). */
 export async function getFileSize(id: string, isVideo = false): Promise<number> {
-  const uri = isVideo ? await getVideoUri(id) : await getLocalUri(id);
+  const uri = isVideo ? await getLibraryVideoUri(id) : await getLocalUri(id);
   if (!uri) return 0;
   try {
     return new File(uri).size || 0;

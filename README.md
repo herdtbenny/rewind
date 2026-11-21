@@ -28,13 +28,14 @@ src/components/SwipeCard.tsx    Swipe-Karte: 3 Richtungen, Pinch für Serien, Vi
 src/components/CompareSheet.tsx Serien-Vergleich
 src/components/ui.tsx           Buttons inkl. Halten-zum-Löschen
 src/screens/                    Zugriff, Übersicht, Swipen, Lösch-Übersicht
+modules/rewind-video/           Natives Modul: kopiert Videos zum Abspielen in den App-Cache
 scripts/add-test-photos.sh      Testfotos, Serien und Screenshots erzeugen und in den Simulator laden
 ```
 
 Technik in Kürze:
 - `expo-media-library`: In SDK 58 liegt die klassische Async-API unter `expo-media-library/legacy`. Die App nutzt `getAssetsAsync` mit Paging für die Übersicht und mit `createdAfter`/`createdBefore` für einen Zeitraum, außerdem `deleteAssetsAsync` (eine System-Bestätigung für alle Fotos). Die neue Klassen-API (`Query`, `Asset`) wäre eine spätere Migrationsoption.
 - Gesten mit `react-native-gesture-handler` 3 (`usePanGesture` + `usePinchGesture`) und Animationen mit `react-native-reanimated` 4 auf dem UI-Thread.
-- Videos mit `expo-video`, Dateigrößen über `getAssetInfoAsync` (lokale Datei-URL) und `expo-file-system`. Favoriten über `setAssetFavoriteAsync`.
+- Videos mit `expo-video`; die Datei kommt über das lokale Expo-Modul `modules/rewind-video` (siehe unten). Dateigrößen über die Datei-URL aus der Mediathek und `expo-file-system`. Favoriten über `setAssetFavoriteAsync`.
 - Berechtigungstexte (deutsch) und `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` kommen über das Config-Plugin in `app.json`.
 
 ## Voraussetzungen (Mac)
@@ -102,11 +103,11 @@ Fotozugriff für einen frischen Test zurücksetzen: `xcrun simctl privacy booted
 
 **Im Simulator nicht prüfbar:**
 - *Screenshots zuerst:* Der Simulator markiert importierte Bilder nie als Screenshot (auch nicht mit Screenshot-EXIF). Auf dem iPhone setzt iOS die Kennzeichnung bei echten Screenshots selbst; Rewind liest sie über `mediaSubtypes`.
-- *Video abspielen (gelöst):* Ab iOS 26 liefert PhotoKit Videos in der „aktuellen“ Version als Komposition, deren Export in `expo-media-library` scheitert („Failed to export the requested video“) – auf dem Simulator wie auf dem iPhone. Rewind holt die Videodatei deshalb über die neue API in der **Originalversion** (`Asset.getUri({ version: ORIGINAL })`). Folge: Bearbeitungen wie ein Zuschnitt werden in der Vorschau nicht mit abgespielt.
+- *Video abspielen (gelöst):* Zwei Hürden. 1) Ab iOS 26 liefert PhotoKit Videos in der „aktuellen“ Version als Komposition, deren Export in `expo-media-library` scheitert („Failed to export the requested video“). 2) Auf echten iPhones liegt die Originaldatei im geschützten Bereich der Mediathek (`/var/mobile/Media/DCIM/…`): Die URL ist zwar lesbar, aber ein eigener Player darf sie nicht öffnen („you don't have permission to view it“) – im Simulator fällt das nicht auf. Lösung: das lokale Expo-Modul `modules/rewind-video` lässt iOS die Videodatei per `PHAssetResourceManager` in `Caches/rewind-videos` kopieren (bei iCloud-Videos inkl. Download) und spielt die Kopie ab. Höchstens 6 Kopien bleiben im Cache, ältere werden entfernt. Auf Bennys iPhone geprüft: Video lädt und läuft.
 
 ### Schneller Test mit Expo Go (ohne Xcode)
 
-Alle verwendeten Module sind in Expo Go enthalten. Ein Schnelltest auf dem eigenen iPhone geht deshalb auch ohne Xcode:
+Bis auf das Video-Modul sind alle verwendeten Module in Expo Go enthalten (Videos spielen dort nicht). Ein Schnelltest auf dem eigenen iPhone geht deshalb auch ohne Xcode:
 
 ```bash
 npm run start:go
@@ -137,7 +138,7 @@ Das Skript `scripts/install-iphone.sh` findet das per Kabel angeschlossene iPhon
 
 **Beim ersten Start auf dem iPhone:** *Einstellungen → Allgemein → VPN & Geräteverwaltung* → deine Apple-ID antippen → *Vertrauen*. Danach Rewind öffnen und beim Fotozugriff **„Vollzugriff erlauben“** wählen.
 
-**Danach auf dem Gerät prüfen:** Galerie-Übersicht, Swipen, Löschen (landet in „Zuletzt gelöscht“), Videos abspielen und „Screenshots zuerst“ – die letzten beiden ließen sich im Simulator nicht testen.
+**Danach auf dem Gerät prüfen:** Galerie-Übersicht, Swipen, Löschen (landet in „Zuletzt gelöscht“), Videos abspielen und „Screenshots zuerst“ (beides ließ sich im Simulator nicht echt testen).
 
 **Falls Signieren scheitert:** Ist die Bundle-ID `de.local.rewind` für dein Team nicht nutzbar, in `app.json` eine eigene setzen (z. B. `de.<name>.rewind`) und `npx expo prebuild --platform ios --clean` ausführen. Ein anderes Team erzwingen: `REWIND_TEAM=<TEAMID> npm run ios:device`.
 
@@ -150,7 +151,8 @@ Das Skript `scripts/install-iphone.sh` findet das per Kabel angeschlossene iPhon
 
 - **App Store / TestFlight:** braucht einen kostenpflichtigen **Apple-Developer-Account** (99 €/Jahr). Damit fallen auch die 7 Tage Laufzeit weg. Builds und Uploads können dann über EAS (`npx eas-cli@latest build` / `submit`) laufen.
 - **Nicht als Web-App/PWA möglich:** Browser bekommen keinen Zugriff auf die ganze Mediathek und können keine Fotos daraus löschen. Deshalb ist die App nativ.
-- **Nur Fotos:** Videos werden aktuell ignoriert (`mediaType: photo`).
+- **Videos in Expo Go:** Das native Video-Modul gibt es nur im Development Build. In Expo Go laufen Videos auf echten iPhones deshalb nicht (Karte zeigt nur das Vorschaubild).
+- **Erstes Abspielen:** Ein Video wird beim ersten Anzeigen kopiert. Bei großen Videos oder Videos, die nur in iCloud liegen, dauert das einen Moment.
 - **iCloud-Fotos:** Gelöschte Fotos verschwinden bei aktivierter iCloud-Mediathek auf allen Geräten (ebenfalls 30 Tage unter „Zuletzt gelöscht“). Fotos, die nur in iCloud liegen, lädt die Vorschau ggf. erst herunter.
 - **Große Mediatheken:** Die Übersicht liest beim Start alle Foto-Einträge ein (nur Metadaten, seitenweise à 500). Bei mehreren zehntausend Fotos dauert das ein paar Sekunden.
 - **Android:** Der Code ist plattformneutral, wurde aber nur für iOS ausgelegt. Google Play erlaubt vollen Mediathek-Zugriff nur für Apps, die ihn wirklich brauchen.
