@@ -1,10 +1,14 @@
 // Gruppierung von Fotos nach Monat oder (ISO-)Woche, immer in lokaler Zeit.
 
-export type PeriodMode = 'month' | 'week';
+export type TimeMode = 'month' | 'week';
+export type PeriodMode = TimeMode | 'category';
+export type CategoryKey = 'screens' | 'videos' | 'bursts';
 
 export type Period = {
-  key: string; // z. B. "m-2026-11" oder "w-2026-47"
+  key: string; // z. B. "m-2026-11", "w-2026-47" oder "c-videos"
   mode: PeriodMode;
+  category?: CategoryKey; // nur bei mode "category"
+
   start: number; // ms, inklusive
   end: number; // ms, exklusive (Beginn des nächsten Zeitraums)
   title: string; // "November 2026" / "KW 47"
@@ -45,7 +49,7 @@ function isoWeek(d: Date): { week: number; year: number } {
   return { week, year: t.getFullYear() };
 }
 
-export function periodFor(time: number, mode: PeriodMode): Period {
+export function periodFor(time: number, mode: TimeMode): Period {
   const d = new Date(time);
   if (mode === 'month') {
     const y = d.getFullYear();
@@ -89,4 +93,15 @@ export function formatDate(time: number): string {
   return `${d.getDate()}. ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}, ${String(
     d.getHours(),
   ).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+export const CATEGORIES: { key: CategoryKey; title: string; hint: string }[] = [
+  { key: 'screens', title: 'Screenshots & Aufnahmen', hint: 'Älteste zuerst' },
+  { key: 'videos', title: 'Videos', hint: 'Größte zuerst' },
+  { key: 'bursts', title: 'Serienbilder', hint: 'Jedes Bild einer Serie einzeln' },
+];
+
+export function categoryPeriod(key: CategoryKey): Period {
+  const c = CATEGORIES.find((x) => x.key === key)!;
+  return { key: `c-${key}`, mode: 'category', category: key, start: 0, end: 0, title: c.title, year: 0 };
 }

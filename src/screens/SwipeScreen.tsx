@@ -12,6 +12,8 @@ import { colors, radius } from '../theme';
 
 type Props = {
   period: Period;
+  /** Fertige Liste (Kategorien), sonst wird der Zeitraum aus der Mediathek geladen. */
+  items?: Photo[];
   decisions: Decisions;
   onDecide: (id: string, d: Decision) => void;
   onUndo: (id: string) => void;
@@ -52,7 +54,7 @@ function seriesEnds(queue: Photo[]): number[] {
 }
 
 export function SwipeScreen(props: Props) {
-  const { period, decisions, onDecide, onUndo, onResetPeriod, onBack, onReview, measureBytes } = props;
+  const { period, items, decisions, onDecide, onUndo, onResetPeriod, onBack, onReview, measureBytes } = props;
   const insets = useSafeAreaInsets();
   const [photos, setPhotos] = useState<Photo[] | null>(null);
   const [queue, setQueue] = useState<Photo[]>([]);
@@ -65,11 +67,14 @@ export function SwipeScreen(props: Props) {
 
   useEffect(() => {
     let alive = true;
-    loadPeriod(period.start, period.end).then((list) => {
+    const load = items ? Promise.resolve(items) : loadPeriod(period.start, period.end);
+    load.then((list) => {
       if (!alive) return;
       setPhotos(list);
       // Nur noch nicht entschiedene Einträge in die Warteschlange → „später weitermachen“.
-      setQueue(order(list.filter((p) => !decisions[p.id])));
+      // Kategorien behalten ihre eigene Reihenfolge (z. B. Videos: größte zuerst).
+      const open = list.filter((p) => !decisions[p.id]);
+      setQueue(items ? open : order(open));
       setIndex(0);
     });
     return () => {

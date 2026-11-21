@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, Button, ProgressBar } from '../components/ui';
-import { formatBytes, type Access, type Photo } from '../media';
-import { periodFor, type Period, type PeriodMode } from '../periods';
+import { formatBytes, type Access, type Categories, type Photo } from '../media';
+import { CATEGORIES, categoryPeriod, periodFor, type Period, type PeriodMode } from '../periods';
 import { streak, type Decisions, type Stats } from '../storage';
 import { colors, radius } from '../theme';
 
@@ -18,6 +18,8 @@ export type PeriodStats = {
 
 type Props = {
   photos: Photo[];
+  categories: Categories | null;
+  trashTotal: number;
   decisions: Decisions;
   stats: Stats;
   mode: PeriodMode;
@@ -30,15 +32,39 @@ type Props = {
   onRefresh: () => void;
 };
 
-type Row = { type: 'year'; year: number } | { type: 'period'; stats: PeriodStats };
+type Row =
+  | { type: 'year'; year: number }
+  | { type: 'period'; stats: PeriodStats; hint?: string; bytes?: number };
 
 export function PeriodsScreen(props: Props) {
-  const { photos, decisions, mode, access } = props;
+  const { photos, categories, decisions, mode, access, trashTotal } = props;
   const insets = useSafeAreaInsets();
 
-  const { rows, trashTotal } = useMemo(() => {
+  const libCounts = useMemo(() => {
+    let videos = 0;
+    for (const p of photos) if (p.isVideo) videos++;
+    return { photos: photos.length - videos, videos };
+  }, [photos]);
+
+  const rows = useMemo(() => {
+    if (mode === 'category') {
+      const rows: Row[] = [];
+      for (const c of CATEGORIES) {
+        const list = categories?.[c.key] ?? [];
+        if (!list.length) continue;
+        const s: PeriodStats = { period: categoryPeriod(c.key), total: list.length, decided: 0, trash: 0, videos: 0, screenshots: 0 };
+        let bytes = 0;
+        for (const p of list) {
+          const d = decisions[p.id];
+          if (d) s.decided++;
+          if (d === 'trash') s.trash++;
+          bytes += p.size ?? 0;
+        }
+        rows.push({ type: 'period', stats: s, hint: c.hint, bytes });
+      }
+      return rows;
+    }
     const map = new Map<string, PeriodStats>();
-    let trashTotal = 0;
     for (const p of photos) {
       const period = periodFor(p.creationTime, mode);
       let s = map.get(period.key);
@@ -48,10 +74,7 @@ export function PeriodsScreen(props: Props) {
       if (p.isScreenshot) s.screenshots++;
       const d = decisions[p.id];
       if (d) s.decided++;
-      if (d === 'trash') {
-        s.trash++;
-        trashTotal++;
-      }
+      if (d === 'trash') s.trash++;
     }
     const sorted = [...map.values()].sort((a, b) => b.period.start - a.period.start);
     const rows: Row[] = [];
@@ -63,15 +86,15 @@ export function PeriodsScreen(props: Props) {
       }
       rows.push({ type: 'period', stats: s });
     }
-    return { rows, trashTotal };
-  }, [photos, decisions, mode]);
+    return rows;
+  }, [photos, categories, decisions, mode]);
 
   const header = (
     <View style={{ gap: 16, paddingBottom: 8 }}>
       <Text style={styles.title}>Rewind</Text>
-      <StatsCard stats={props.stats} />
+      <StatsCard stats={props.stats} photoCount={libCounts.photos} videoCount={libCounts.videos} />
       <View style={styles.segment}>
-        {(['month', 'week'] as const).map((m) => (
+        {(['month', 'week', 'category'] as const).map((m) => (
           <Pressable
             key={m}
             testID={`mode-${m}`}
@@ -79,7 +102,7 @@ export function PeriodsScreen(props: Props) {
             style={[styles.segItem, mode === m && styles.segActive]}
           >
             <Text style={[styles.segText, mode === m && { color: colors.text }]}>
-              {m === 'month' ? 'Monate' : 'Wochen'}
+              {m === 'month' ? 'Monate' : m === 'week' ? 'Wochen' : 'Kategorien'}
             </Text>
           </Pressable>
         ))}
@@ -118,11 +141,21 @@ export function PeriodsScreen(props: Props) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24, gap: 8 }}
         refreshControl={<RefreshControl refreshing={props.refreshing} onRefresh={props.onRefresh} tintColor={colors.muted} />}
         ListEmptyComponent={
-          <Text style={styles.empty}>Keine Fotos gefunden.</Text>
+          <Text style={styles.empty}>
+            {mode === 'category'
+              ? categories
+                ? 'Keine Screenshots, Videos oder Serienbilder gefunden.'
+                : 'Kategorien werden geladen …'
+              : 'Keine Fotos gefunden.'}
+          </Text>
         }
         renderItem={({ item }) => {
           if (item.type === 'year') return <Text style={styles.year}>{item.year}</Text>;
           const { period, total, decided, trash } = item.stats;
+          const subtitle =
+            item.hint !== undefined
+              ? [item.hint, item.bytes ? formatBytes(item.bytes) : ''].filter(Boolean).join(' · ')
+              : period.subtitle;
           const open = total - decided;
           const finished = total > 0 && open === 0;
           return (
@@ -134,7 +167,7 @@ export function PeriodsScreen(props: Props) {
               <View style={styles.rowTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{period.title}</Text>
-                  {period.subtitle && <Text style={styles.rowSub}>{period.subtitle}</Text>}
+                  {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.count}>
@@ -164,37 +197,46 @@ export function PeriodsScreen(props: Props) {
   );
 }
 
-function StatsCard({ stats }: { stats: Stats }) {
+/** 12345 → "12.345" */
+function formatCount(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function StatsCard({ stats, photoCount, videoCount }: { stats: Stats; photoCount: number; videoCount: number }) {
   const days = streak(stats.activeDays);
+  let kicker: string;
+  let big: string;
+  let small: string;
   if (stats.deletedCount === 0 && days === 0) {
-    return (
-      <View style={styles.stats}>
-        <Text style={[styles.statsBig, { fontSize: 18 }]}>Spul zurück und räum auf</Text>
-        <Text style={styles.statsSmall}>
-          Wähl einen Monat, wisch nach links zum Aussortieren, nach rechts zum Behalten, nach oben für Favoriten.
-        </Text>
-      </View>
-    );
-  }
-  if (stats.deletedCount === 0) {
-    return (
-      <View style={styles.stats} testID="stats-card">
-        <Text style={styles.statsKicker}>Du bist dran</Text>
-        <Text style={styles.statsBig}>
-          {days} {days === 1 ? 'Tag' : 'Tage'} in Folge
-        </Text>
-        <Text style={styles.statsSmall}>Noch nichts gelöscht – Aussortiertes löschst du am Ende eines Zeitraums.</Text>
-      </View>
-    );
+    kicker = 'Spul zurück und räum auf';
+    big = '';
+    small = 'Wähl einen Monat oder eine Kategorie: links weg, rechts behalten, nach oben Favorit.';
+  } else if (stats.deletedCount === 0) {
+    kicker = 'Du bist dran';
+    big = `${days} ${days === 1 ? 'Tag' : 'Tage'} in Folge`;
+    small = 'Noch nichts gelöscht – Aussortiertes löschst du am Ende eines Zeitraums.';
+  } else {
+    kicker = 'Bisher aufgeräumt';
+    big = `${formatBytes(stats.freedBytes)} frei`;
+    small = `${stats.deletedCount} gelöscht${days > 0 ? ` · ${days} ${days === 1 ? 'Tag' : 'Tage'} in Folge` : ''}`;
   }
   return (
     <View style={styles.stats} testID="stats-card">
-      <Text style={styles.statsKicker}>Bisher aufgeräumt</Text>
-      <Text style={styles.statsBig}>{formatBytes(stats.freedBytes)} frei</Text>
-      <Text style={styles.statsSmall}>
-        {stats.deletedCount} gelöscht
-        {days > 0 ? ` · ${days} ${days === 1 ? 'Tag' : 'Tage'} in Folge` : ''}
-      </Text>
+      <View style={styles.libRow}>
+        <View style={styles.libCell}>
+          <Text style={styles.libNum} testID="lib-photos">{formatCount(photoCount)}</Text>
+          <Text style={styles.libLabel}>{photoCount === 1 ? 'Foto' : 'Fotos'}</Text>
+        </View>
+        <View style={styles.libDivider} />
+        <View style={styles.libCell}>
+          <Text style={styles.libNum} testID="lib-videos">{formatCount(videoCount)}</Text>
+          <Text style={styles.libLabel}>{videoCount === 1 ? 'Video' : 'Videos'}</Text>
+        </View>
+      </View>
+      <View style={styles.statsLine} />
+      <Text style={styles.statsKicker}>{kicker}</Text>
+      {!!big && <Text style={styles.statsBig}>{big}</Text>}
+      <Text style={styles.statsSmall}>{small}</Text>
     </View>
   );
 }
@@ -208,6 +250,12 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 2,
   },
+  libRow: { flexDirection: 'row', alignItems: 'center' },
+  libCell: { flex: 1 },
+  libNum: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  libLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  libDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: 14 },
+  statsLine: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
   statsKicker: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   statsBig: { color: colors.text, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   statsSmall: { color: colors.muted, fontSize: 13, lineHeight: 18 },

@@ -8,7 +8,8 @@ Expo SDK 58 · React Native 0.88 · TypeScript · rein lokal, kein Server
 
 - **Zugriff:** Beim ersten Start fragt die App nach Lese- und Schreibzugriff auf die Mediathek. Hast du nur **„Ausgewählte Fotos“** freigegeben, zeigt sie einen Hinweis mit „Auswahl ändern“ (System-Auswahl) und „Alle erlauben“ (Einstellungen). Bei abgelehntem Zugriff führt ein Button direkt in die Einstellungen.
 - **Übersicht:** Fotos und Videos nach Aufnahmedatum, wahlweise nach **Monaten** oder **Kalenderwochen** (ISO-KW). Pro Zeitraum: Anzahl, offen/aussortiert, Fortschrittsbalken. Fertige Zeiträume bekommen ein schlichtes „Fertig“-Overlay.
-- **Statistik-Karte:** Oben in der Übersicht: wie viel Speicher Rewind schon freigegeben hat, wie viele Einträge gelöscht wurden und an wie vielen Tagen in Folge du aufgeräumt hast.
+- **Kategorien:** dritter Tab neben Monaten und Wochen. **Screenshots & Bildschirmaufnahmen** (älteste zuerst), **Videos** (größte zuerst, mit Gesamtgröße) und **Serienbilder** (jedes Einzelbild einer Serie, die iOS sonst hinter einem Titelbild versteckt). Die Einträge kommen aus den intelligenten Alben von iOS. Entscheidungen gelten überall: Ein Screenshot, den du in der Kategorie wegwischst, ist auch im Monat aussortiert.
+- **Statistik-Karte:** Oben in der Übersicht: wie viele Fotos und Videos gerade auf dem iPhone sind, wie viel Speicher Rewind schon freigegeben hat, wie viele Einträge gelöscht wurden und an wie vielen Tagen in Folge du aufgeräumt hast.
 - **Swipen:** links „weg damit“, rechts „behalten“, **nach oben „Favorit“** (setzt das Herz in der Fotos-App, Rückgängig nimmt es wieder weg). Buttons ✕ / ↺ / ★ / ♥; schnelles Tippen wird gepuffert.
 - **Screenshots zuerst:** In jedem Zeitraum kommen Screenshots (von iOS als solche markiert) vor allen anderen Fotos.
 - **Videos:** laufen stumm in Schleife auf der Karte, mit Längenangabe.
@@ -28,7 +29,7 @@ src/components/SwipeCard.tsx    Swipe-Karte: 3 Richtungen, Pinch für Serien, Vi
 src/components/CompareSheet.tsx Serien-Vergleich
 src/components/ui.tsx           Buttons inkl. Halten-zum-Löschen
 src/screens/                    Zugriff, Übersicht, Swipen, Lösch-Übersicht
-modules/rewind-video/           Natives Modul: kopiert Videos zum Abspielen in den App-Cache
+modules/rewind-video/           Natives Modul: Videos zum Abspielen in den App-Cache kopieren, Kategorien lesen
 scripts/add-test-photos.sh      Testfotos, Serien und Screenshots erzeugen und in den Simulator laden
 ```
 
@@ -36,6 +37,7 @@ Technik in Kürze:
 - `expo-media-library`: In SDK 58 liegt die klassische Async-API unter `expo-media-library/legacy`. Die App nutzt `getAssetsAsync` mit Paging für die Übersicht und mit `createdAfter`/`createdBefore` für einen Zeitraum, außerdem `deleteAssetsAsync` (eine System-Bestätigung für alle Fotos). Die neue Klassen-API (`Query`, `Asset`) wäre eine spätere Migrationsoption.
 - Gesten mit `react-native-gesture-handler` 3 (`usePanGesture` + `usePinchGesture`) und Animationen mit `react-native-reanimated` 4 auf dem UI-Thread.
 - Videos mit `expo-video`; die Datei kommt über das lokale Expo-Modul `modules/rewind-video` (siehe unten). Dateigrößen über die Datei-URL aus der Mediathek und `expo-file-system`. Favoriten über `setAssetFavoriteAsync`.
+- Kategorien über dasselbe Modul (`fetchCategory`): intelligente Alben per `PHAssetCollection` (Screenshots, Bildschirmaufnahmen, Videos, Serien mit `includeAllBurstAssets`). Videogrößen kommen dabei gleich mit (Summe der `PHAssetResource`-Dateien).
 - Berechtigungstexte (deutsch) und `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` kommen über das Config-Plugin in `app.json`.
 
 ## Voraussetzungen (Mac)
@@ -151,6 +153,7 @@ Das Skript `scripts/install-iphone.sh` findet das per Kabel angeschlossene iPhon
 
 - **App Store / TestFlight:** braucht einen kostenpflichtigen **Apple-Developer-Account** (99 €/Jahr). Damit fallen auch die 7 Tage Laufzeit weg. Builds und Uploads können dann über EAS (`npx eas-cli@latest build` / `submit`) laufen.
 - **Nicht als Web-App/PWA möglich:** Browser bekommen keinen Zugriff auf die ganze Mediathek und können keine Fotos daraus löschen. Deshalb ist die App nativ.
+- **Kategorien im Simulator:** Der Simulator hat keine echten Screenshots, Bildschirmaufnahmen oder Serien. Dort erscheint nur die Kategorie Videos; leere Kategorien werden ausgeblendet. In Expo Go (ohne natives Modul) gibt es keine Serienbilder.
 - **Videos in Expo Go:** Das native Video-Modul gibt es nur im Development Build. In Expo Go laufen Videos auf echten iPhones deshalb nicht (Karte zeigt nur das Vorschaubild).
 - **Erstes Abspielen:** Ein Video wird beim ersten Anzeigen kopiert. Bei großen Videos oder Videos, die nur in iCloud liegen, dauert das einen Moment.
 - **iCloud-Fotos:** Gelöschte Fotos verschwinden bei aktivierter iCloud-Mediathek auf allen Geräten (ebenfalls 30 Tage unter „Zuletzt gelöscht“). Fotos, die nur in iCloud liegen, lädt die Vorschau ggf. erst herunter.

@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -8,10 +8,12 @@ import {
   deletePhotos,
   getAccess,
   getFileSizes,
+  loadCategories,
   onLibraryChange,
   requestAccess,
   scanLibrary,
   type Access,
+  type Categories,
   type Photo,
 } from './src/media';
 import type { Period, PeriodMode } from './src/periods';
@@ -55,6 +57,7 @@ function Main() {
   const [access, setAccess] = useState<Access | null>(null);
   const [canAskAgain, setCanAskAgain] = useState(true);
   const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [categories, setCategories] = useState<Categories | null>(null);
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [decisions, setDecisions] = useState<Decisions>({});
@@ -65,6 +68,18 @@ function Main() {
   const videoIdsRef = useRef<Set<string>>(new Set());
   const decisionsRef = useRef(decisions);
   decisionsRef.current = decisions;
+
+  // Alles Aussortierte, inkl. Einzelbilder von Serien (die nur in der Kategorie vorkommen)
+  const allTrash = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Photo[] = [];
+    for (const p of [...(photos ?? []), ...(categories?.bursts ?? [])]) {
+      if (decisions[p.id] !== 'trash' || seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push(p);
+    }
+    return out;
+  }, [photos, categories, decisions]);
 
   const updateStats = useCallback((fn: (s: Stats) => Stats) => {
     setStats((prev) => {
@@ -109,9 +124,15 @@ function Main() {
     const list = await scanLibrary((loaded, total) => setProgress({ loaded, total }));
     setPhotos(list);
     setProgress(null);
-    videoIdsRef.current = new Set(list.filter((p) => p.isVideo).map((p) => p.id));
+    const cats = await loadCategories(list);
+    setCategories(cats);
+    // Bekannte Größen (Videos aus der Kategorie) übernehmen, spart späteres Messen
+    for (const p of cats.videos) if (p.size) sizesRef.current[p.id] = p.size;
+    const all = [...list, ...cats.bursts];
+    videoIdsRef.current = new Set(all.filter((p) => p.isVideo).map((p) => p.id));
     // Entscheidungen zu Fotos entfernen, die es nicht mehr gibt (z. B. in der Fotos-App gelöscht).
-    const ids = new Set(list.map((p) => p.id));
+    // Einzelbilder von Serien stehen nicht in der Mediathek-Liste, nur in der Kategorie.
+    const ids = new Set(all.map((p) => p.id));
     const current = decisionsRef.current;
     const stale = Object.keys(current).filter((id) => !ids.has(id));
     if (stale.length) {
@@ -182,6 +203,13 @@ function Main() {
     update((x) => deleteIds.forEach((id) => delete x[id]));
     const deleted = new Set(deleteIds);
     setPhotos((p) => p?.filter((x) => !deleted.has(x.id)) ?? p);
+    setCategories((c) =>
+      c && {
+        screens: c.screens.filter((x) => !deleted.has(x.id)),
+        videos: c.videos.filter((x) => !deleted.has(x.id)),
+        bursts: c.bursts.filter((x) => !deleted.has(x.id)),
+      },
+    );
     await flushDecisions();
     setScreen(back);
     if (deleteIds.length) {
@@ -218,6 +246,7 @@ function Main() {
     return (
       <SwipeScreen
         period={screen.period}
+        items={screen.period.category ? (categories?.[screen.period.category] ?? []) : undefined}
         decisions={decisions}
         onDecide={decide}
         onUndo={undo}
@@ -242,6 +271,8 @@ function Main() {
   return (
     <PeriodsScreen
       photos={photos}
+      categories={categories}
+      trashTotal={allTrash.length}
       decisions={decisions}
       stats={stats}
       mode={mode}
@@ -256,7 +287,7 @@ function Main() {
         setScreen({
           name: 'review',
           title: 'Alle aussortierten',
-          photos: photos.filter((p) => decisions[p.id] === 'trash'),
+          photos: allTrash,
           back: { name: 'periods' },
         })
       }

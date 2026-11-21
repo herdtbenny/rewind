@@ -59,7 +59,7 @@ export async function flushDecisions() {
 
 export async function loadMode(): Promise<PeriodMode> {
   const m = await AsyncStorage.getItem(MODE_KEY).catch(() => null);
-  return m === 'week' ? 'week' : 'month';
+  return m === 'week' || m === 'category' ? m : 'month';
 }
 
 export function saveMode(m: PeriodMode) {

@@ -69,11 +69,58 @@ public class RewindVideoModule: Module {
       }
     }
 
+    /// Einträge einer Kategorie aus den intelligenten Alben von iOS.
+    /// "screens" = Screenshots + Bildschirmaufnahmen, "videos" = alle Videos (mit Größe),
+    /// "bursts" = Serienbilder inkl. aller Einzelbilder (sonst liefert PhotoKit pro Serie nur eins).
+    AsyncFunction("fetchCategory") { (kind: String) -> [[String: Any]] in
+      let subtypes: [PHAssetCollectionSubtype]
+      switch kind {
+      case "screens": subtypes = [.smartAlbumScreenshots, .smartAlbumScreenRecordings]
+      case "videos": subtypes = [.smartAlbumVideos]
+      case "bursts": subtypes = [.smartAlbumBursts]
+      default: subtypes = []
+      }
+      var seen = Set<String>()
+      var out: [[String: Any]] = []
+      for subtype in subtypes {
+        let collections = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: subtype, options: nil)
+        collections.enumerateObjects { collection, _, _ in
+          let options = PHFetchOptions()
+          options.includeAllBurstAssets = kind == "bursts"
+          options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+          PHAsset.fetchAssets(in: collection, options: options).enumerateObjects { asset, _, _ in
+            guard seen.insert(asset.localIdentifier).inserted else { return }
+            var item: [String: Any] = [
+              "id": asset.localIdentifier,
+              "creationTime": (asset.creationDate?.timeIntervalSince1970 ?? 0) * 1000,
+              "width": asset.pixelWidth,
+              "height": asset.pixelHeight,
+              "isVideo": asset.mediaType == .video,
+              "duration": asset.duration,
+              "isScreenshot": asset.mediaSubtypes.contains(.photoScreenshot),
+            ]
+            if asset.mediaType == .video {
+              item["size"] = Self.totalSize(of: asset)
+            }
+            out.append(item)
+          }
+        }
+      }
+      return out
+    }
+
     /// Löscht alle kopierten Videos aus dem Cache.
     Function("clearVideoCache") {
       let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("rewind-videos", isDirectory: true)
       try? FileManager.default.removeItem(at: dir)
+    }
+  }
+
+  /// Speicherbedarf eines Eintrags: Summe aller Dateien (Original + ggf. Bearbeitung).
+  private static func totalSize(of asset: PHAsset) -> Double {
+    PHAssetResource.assetResources(for: asset).reduce(0) { sum, resource in
+      sum + ((resource.value(forKey: "fileSize") as? NSNumber)?.doubleValue ?? 0)
     }
   }
 

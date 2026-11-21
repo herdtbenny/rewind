@@ -5,7 +5,8 @@
 import { File } from 'expo-file-system';
 import { Asset, AssetUriVersion } from 'expo-media-library';
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { exportVideo } from '../modules/rewind-video';
+import { exportVideo, fetchCategory } from '../modules/rewind-video';
+import type { CategoryKey } from './periods';
 
 export type Photo = {
   id: string;
@@ -16,6 +17,7 @@ export type Photo = {
   isVideo: boolean;
   duration: number; // Sekunden, 0 bei Fotos
   isScreenshot: boolean;
+  size?: number; // Bytes, nur wenn schon bekannt (Kategorie Videos)
 };
 
 export type Access = 'all' | 'limited' | 'none' | 'undetermined';
@@ -97,6 +99,33 @@ export async function loadPeriod(start: number, end: number): Promise<Photo[]> {
     after = page.endCursor;
   }
   return out;
+}
+
+export type Categories = Record<CategoryKey, Photo[]>;
+
+/**
+ * Alle Kategorien laden: Screenshots & Bildschirmaufnahmen und Serienbilder (älteste zuerst),
+ * Videos (größte zuerst). Ohne natives Modul (Expo Go) aus der gescannten Mediathek abgeleitet.
+ */
+export async function loadCategories(library: Photo[]): Promise<Categories> {
+  const toList = (items: Awaited<ReturnType<typeof fetchCategory>>) =>
+    (items ?? []).map((a) => ({ ...a, uri: `ph://${a.id}` }) as Photo);
+  const [screens, videos, bursts] = await Promise.all(
+    (['screens', 'videos', 'bursts'] as const).map((k) => fetchCategory(k).catch(() => undefined)),
+  );
+  const byTime = (a: Photo, b: Photo) => a.creationTime - b.creationTime;
+  if (!screens || !videos || !bursts) {
+    return {
+      screens: library.filter((p) => p.isScreenshot).sort(byTime),
+      videos: library.filter((p) => p.isVideo).sort(byTime),
+      bursts: [],
+    };
+  }
+  return {
+    screens: toList(screens).sort(byTime),
+    videos: toList(videos).sort((a, b) => (b.size ?? 0) - (a.size ?? 0) || a.creationTime - b.creationTime),
+    bursts: toList(bursts).sort(byTime),
+  };
 }
 
 /**
