@@ -7,7 +7,7 @@ Expo SDK 58 · React Native 0.88 · TypeScript · rein lokal, kein Server
 ## Funktionen
 
 - **Zugriff:** Beim ersten Start fragt die App nach Lese- und Schreibzugriff auf die Mediathek. Hast du nur **„Ausgewählte Fotos“** freigegeben, zeigt sie einen Hinweis mit „Auswahl ändern“ (System-Auswahl) und „Alle erlauben“ (Einstellungen). Bei abgelehntem Zugriff führt ein Button direkt in die Einstellungen.
-- **Übersicht:** Fotos und Videos nach Aufnahmedatum, wahlweise nach **Monaten** oder **Kalenderwochen** (ISO-KW). Pro Zeitraum: Anzahl, offen/aussortiert, Videos und Screenshots, Fortschrittsbalken.
+- **Übersicht:** Fotos und Videos nach Aufnahmedatum, wahlweise nach **Monaten** oder **Kalenderwochen** (ISO-KW). Pro Zeitraum: Anzahl, offen/aussortiert, Fortschrittsbalken. Fertige Zeiträume bekommen ein schlichtes „Fertig“-Overlay.
 - **Statistik-Karte:** Oben in der Übersicht: wie viel Speicher Rewind schon freigegeben hat, wie viele Einträge gelöscht wurden und an wie vielen Tagen in Folge du aufgeräumt hast.
 - **Swipen:** links „weg damit“, rechts „behalten“, **nach oben „Favorit“** (setzt das Herz in der Fotos-App, Rückgängig nimmt es wieder weg). Buttons ✕ / ↺ / ★ / ♥; schnelles Tippen wird gepuffert.
 - **Screenshots zuerst:** In jedem Zeitraum kommen Screenshots (von iOS als solche markiert) vor allen anderen Fotos.

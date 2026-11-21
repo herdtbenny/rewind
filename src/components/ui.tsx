@@ -90,9 +90,17 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.text} />
+        <ActivityIndicator color={variant === 'primary' ? colors.accentInk : colors.text} />
       ) : (
-        <Text style={[styles.btnText, variant === 'ghost' && { color: colors.text }]}>{label}</Text>
+        <Text
+          style={[
+            styles.btnText,
+            variant === 'primary' && { color: colors.accentInk },
+            variant === 'ghost' && { color: colors.text },
+          ]}
+        >
+          {label}
+        </Text>
       )}
     </Pressable>
   );

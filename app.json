@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0E0E11",
+    "backgroundColor": "#0A0A0A",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "de.local.rewind"
@@ -14,7 +14,7 @@
     "android": {
       "package": "de.local.rewind",
       "adaptiveIcon": {
-        "backgroundColor": "#0E0E11",
+        "backgroundColor": "#0A0A0A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

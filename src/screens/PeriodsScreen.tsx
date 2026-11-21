@@ -122,14 +122,9 @@ export function PeriodsScreen(props: Props) {
         }
         renderItem={({ item }) => {
           if (item.type === 'year') return <Text style={styles.year}>{item.year}</Text>;
-          const { period, total, decided, trash, videos, screenshots } = item.stats;
-          const extra = [
-            videos ? `${videos} ${videos === 1 ? 'Video' : 'Videos'}` : '',
-            screenshots ? `${screenshots} Screenshots` : '',
-          ]
-            .filter(Boolean)
-            .join(' · ');
+          const { period, total, decided, trash } = item.stats;
           const open = total - decided;
+          const finished = total > 0 && open === 0;
           return (
             <Pressable
               testID={`period-${period.key}`}
@@ -140,7 +135,6 @@ export function PeriodsScreen(props: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{period.title}</Text>
                   {period.subtitle && <Text style={styles.rowSub}>{period.subtitle}</Text>}
-                  {!!extra && <Text style={styles.rowSub}>{extra}</Text>}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.count}>
@@ -153,6 +147,15 @@ export function PeriodsScreen(props: Props) {
                 </View>
               </View>
               <ProgressBar value={total ? decided / total : 0} />
+              {finished && (
+                <View style={styles.doneOverlay} pointerEvents="none" testID={`period-done-${period.key}`}>
+                  <View style={styles.doneBadge}>
+                    <Text style={styles.doneCheck}>✓</Text>
+                  </View>
+                  <Text style={styles.doneLabel}>{period.title}</Text>
+                  <Text style={styles.doneMeta}>Fertig{trash > 0 ? ` · ${trash} weg` : ''}</Text>
+                </View>
+              )}
             </Pressable>
           );
         }}
@@ -165,9 +168,9 @@ function StatsCard({ stats }: { stats: Stats }) {
   const days = streak(stats.activeDays);
   if (stats.deletedCount === 0 && days === 0) {
     return (
-      <View style={[styles.stats, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.statsBig, { color: colors.text, fontSize: 18 }]}>Spul zurück und räum auf</Text>
-        <Text style={[styles.statsSmall, { color: colors.muted }]}>
+      <View style={styles.stats}>
+        <Text style={[styles.statsBig, { fontSize: 18 }]}>Spul zurück und räum auf</Text>
+        <Text style={styles.statsSmall}>
           Wähl einen Monat, wisch nach links zum Aussortieren, nach rechts zum Behalten, nach oben für Favoriten.
         </Text>
       </View>
@@ -197,10 +200,17 @@ function StatsCard({ stats }: { stats: Stats }) {
 }
 
 const styles = StyleSheet.create({
-  stats: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, gap: 2 },
-  statsKicker: { color: colors.accentInk, fontSize: 13, fontWeight: '600' },
-  statsBig: { color: colors.accentInk, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
-  statsSmall: { color: colors.accentInk, fontSize: 13, lineHeight: 18 },
+  stats: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: 14,
+    gap: 2,
+  },
+  statsKicker: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  statsBig: { color: colors.text, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  statsSmall: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   root: { flex: 1, backgroundColor: colors.bg },
   title: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
   segment: {
@@ -226,7 +236,30 @@ const styles = StyleSheet.create({
   trashText: { color: colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
   trashCta: { color: colors.trash, fontSize: 15, fontWeight: '700' },
   year: { color: colors.muted, fontSize: 13, fontWeight: '700', letterSpacing: 1, marginTop: 12 },
-  row: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 14, gap: 12 },
+  row: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 14, gap: 12, overflow: 'hidden' },
+  doneOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+  },
+  doneBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneCheck: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  doneLabel: { color: colors.text, fontSize: 16, fontWeight: '700', flex: 1 },
+  doneMeta: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
   rowSub: { color: colors.muted, fontSize: 13, marginTop: 2 },

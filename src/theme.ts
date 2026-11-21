@@ -1,15 +1,16 @@
+// Ruhiges Schwarz-Weiß. Farbe nur als Signal: Grün = behalten, Rot = weg, Gelb = Favorit.
 export const colors = {
-  bg: '#0B0B0F',
-  surface: '#16161C',
-  surface2: '#22222A',
-  border: '#2A2A33',
-  text: '#F4F4F6',
-  muted: '#9A9AA5',
+  bg: '#0A0A0A',
+  surface: '#151515',
+  surface2: '#222222',
+  border: '#2A2A2A',
+  text: '#F2F2EF',
+  muted: '#8C8C88',
   trash: '#FF5A5F',
   keep: '#3DDC97',
   fav: '#FFC24B',
-  accent: '#8B7CFF',
-  accentInk: '#16113A',
+  accent: '#F2F2EF',
+  accentInk: '#0A0A0A',
   warn: '#FFB547',
 };
 
